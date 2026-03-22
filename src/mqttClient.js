@@ -1,0 +1,311 @@
+import mqtt from "mqtt";
+import { EventEmitter } from "node:events";
+import { config } from "./config.js";
+
+const events = new EventEmitter();
+
+/**
+ * @typedef {object} DeviceRegistryEntry
+ * @property {string} id
+ * @property {string} lastSeenAt
+ * @property {string} lastTopic
+ * @property {'ttl'|'explicit'} presenceKind
+ * @property {boolean} [explicitConnected]
+ * @property {object} [meta]
+ * @property {{ envId: string, deviceType: string, deviceId: string }} [identity]
+ */
+
+/** @type {Map<string, DeviceRegistryEntry>} */
+const deviceRegistry = new Map();
+
+let client = null;
+let connected = false;
+let lastError = null;
+
+function extractWildcardSegments(pattern, topic) {
+  const pa = pattern.split("/");
+  const ta = topic.split("/");
+  if (pa.length !== ta.length) return null;
+  const segments = [];
+  for (let i = 0; i < pa.length; i++) {
+    if (pa[i] === "+") {
+      segments.push(ta[i]);
+    } else if (pa[i] !== ta[i]) {
+      return null;
+    }
+  }
+  return segments.length > 0 ? segments : null;
+}
+
+function compositeDeviceId(segments) {
+  return segments.join("/");
+}
+
+function floraIdentityFromTopic(topic, segments) {
+  if (segments.length !== 3) return undefined;
+  if (!topic.endsWith("/heartbeat")) return undefined;
+  return {
+    envId: segments[0],
+    deviceType: segments[1],
+    deviceId: segments[2],
+  };
+}
+
+function looksLikeFloraHeartbeatJson(j) {
+  return (
+    j &&
+    typeof j === "object" &&
+    (typeof j.ts === "number" ||
+      typeof j.ts === "string" ||
+      j.dht_status !== undefined ||
+      j.registered_at !== undefined)
+  );
+}
+
+/**
+ * @returns {{ kind: 'heartbeat', meta?: object } | { kind: 'status', connected: boolean, meta?: object }}
+ */
+function parseDevicePayload(payloadBuf) {
+  const s = payloadBuf.toString("utf8").trim();
+  if (!s) return { kind: "heartbeat", meta: undefined };
+  try {
+    const j = JSON.parse(s);
+    if (looksLikeFloraHeartbeatJson(j)) {
+      return { kind: "heartbeat", meta: j };
+    }
+    if (typeof j.connected === "boolean") {
+      return { kind: "status", connected: j.connected, meta: j };
+    }
+    if (typeof j.online === "boolean") {
+      return { kind: "status", connected: j.online, meta: j };
+    }
+    const st = String(j.state || "").toLowerCase();
+    if (st === "offline" || st === "disconnected") {
+      return { kind: "status", connected: false, meta: j };
+    }
+    if (st === "online" || st === "connected") {
+      return { kind: "status", connected: true, meta: j };
+    }
+    return { kind: "heartbeat", meta: j };
+  } catch {
+    /* plain text */
+  }
+
+  const lower = s.toLowerCase();
+  if (
+    lower === "offline" ||
+    lower === "false" ||
+    lower === "0" ||
+    lower === "disconnected"
+  ) {
+    return { kind: "status", connected: false, meta: undefined };
+  }
+  if (
+    lower === "online" ||
+    lower === "true" ||
+    lower === "1" ||
+    lower === "connected"
+  ) {
+    return { kind: "status", connected: true, meta: undefined };
+  }
+  return { kind: "heartbeat", meta: { raw: s } };
+}
+
+function millisSinceIso(iso) {
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return Infinity;
+  return Date.now() - t;
+}
+
+function entryIsConnected(entry) {
+  if (entry.presenceKind === "explicit") {
+    return entry.explicitConnected === true;
+  }
+  return millisSinceIso(entry.lastSeenAt) <= config.deviceHeartbeatTtlSec * 1000;
+}
+
+function toPublicDevice(entry) {
+  const row = {
+    id: entry.id,
+    connected: entryIsConnected(entry),
+    lastSeenAt: entry.lastSeenAt,
+    lastTopic: entry.lastTopic,
+  };
+  if (entry.identity) row.identity = entry.identity;
+  if (entry.meta !== undefined) row.telemetry = entry.meta;
+  return row;
+}
+
+function subscribeDeviceTopics() {
+  if (!client || !connected) return;
+  const pattern = config.devicesSubscribePattern;
+  client.subscribe(pattern, { qos: 1 }, (err) => {
+    if (err) events.emit("subscribe_error", err);
+  });
+}
+
+export function listDevices({ includeOffline = false } = {}) {
+  const rows = [...deviceRegistry.values()].map(toPublicDevice);
+  const filtered = includeOffline
+    ? rows
+    : rows.filter((d) => d.connected === true);
+  filtered.sort((a, b) => a.id.localeCompare(b.id));
+  return filtered;
+}
+
+export function getMqttState() {
+  return {
+    connected,
+    clientId: config.mqtt.clientId,
+    url: redactUrl(config.mqtt.url),
+    lastError: lastError ? String(lastError.message || lastError) : null,
+  };
+}
+
+function redactUrl(url) {
+  try {
+    const u = new URL(url);
+    if (u.password) u.password = "***";
+    if (u.username) u.username = u.username ? "***" : "";
+    return u.toString();
+  } catch {
+    return "(invalid url)";
+  }
+}
+
+export function onMqtt(event, fn) {
+  events.on(event, fn);
+}
+
+export function connectMqtt() {
+  if (client) return client;
+
+  const opts = {
+    clientId: config.mqtt.clientId,
+    reconnectPeriod: 5_000,
+    connectTimeout: 30_000,
+  };
+  if (config.mqtt.username) opts.username = config.mqtt.username;
+  if (config.mqtt.password) opts.password = config.mqtt.password;
+
+  client = mqtt.connect(config.mqtt.url, opts);
+
+  client.on("connect", () => {
+    connected = true;
+    lastError = null;
+    subscribeDeviceTopics();
+    events.emit("connect");
+  });
+
+  client.on("message", (topic, payload) => {
+    const segments = extractWildcardSegments(
+      config.devicesSubscribePattern,
+      topic
+    );
+    if (!segments) return;
+    const id = compositeDeviceId(segments);
+    const parsed = parseDevicePayload(payload);
+    const identity = floraIdentityFromTopic(topic, segments);
+    const now = new Date().toISOString();
+
+    if (parsed.kind === "heartbeat") {
+      deviceRegistry.set(id, {
+        id,
+        lastSeenAt: now,
+        lastTopic: topic,
+        presenceKind: "ttl",
+        ...(identity ? { identity } : {}),
+        ...(parsed.meta !== undefined ? { meta: parsed.meta } : {}),
+      });
+      return;
+    }
+
+    deviceRegistry.set(id, {
+      id,
+      lastSeenAt: now,
+      lastTopic: topic,
+      presenceKind: "explicit",
+      explicitConnected: parsed.connected,
+      ...(identity ? { identity } : {}),
+      ...(parsed.meta !== undefined ? { meta: parsed.meta } : {}),
+    });
+  });
+
+  client.on("reconnect", () => {
+    connected = false;
+    events.emit("reconnect");
+  });
+
+  client.on("close", () => {
+    connected = false;
+    events.emit("close");
+  });
+
+  client.on("error", (err) => {
+    lastError = err;
+    connected = false;
+    events.emit("error", err);
+  });
+
+  client.on("offline", () => {
+    connected = false;
+    events.emit("offline");
+  });
+
+  return client;
+}
+
+export function disconnectMqtt() {
+  return new Promise((resolve) => {
+    if (!client) {
+      resolve();
+      return;
+    }
+    const c = client;
+    client = null;
+    connected = false;
+    deviceRegistry.clear();
+    c.end(false, {}, () => resolve());
+  });
+}
+
+function normalizeTopic(topic) {
+  let t = String(topic).trim();
+  if (t.startsWith("/")) t = t.slice(1);
+  if (!t) throw new Error("topic is empty");
+  const p = config.topicPrefix;
+  if (p && !t.startsWith(`${p}/`) && t !== p) {
+    t = `${p}/${t}`;
+  }
+  return t;
+}
+
+function encodePayload(payload) {
+  if (payload === null || payload === undefined) return Buffer.alloc(0);
+  if (Buffer.isBuffer(payload)) return payload;
+  if (typeof payload === "string") return Buffer.from(payload, "utf8");
+  return Buffer.from(JSON.stringify(payload), "utf8");
+}
+
+export function publishMqtt({ topic, payload, qos, retain }) {
+  if (!client) throw new Error("MQTT client not initialized");
+  if (!connected) throw new Error("MQTT not connected");
+
+  const t = normalizeTopic(topic);
+  const q =
+    qos !== undefined && qos !== null
+      ? Number(qos)
+      : config.mqtt.defaultQos;
+  if (q < 0 || q > 2 || Number.isNaN(q)) {
+    throw new Error("qos must be 0, 1, or 2");
+  }
+  const r = Boolean(retain);
+  const buf = encodePayload(payload);
+
+  return new Promise((resolve, reject) => {
+    client.publish(t, buf, { qos: q, retain: r }, (err) => {
+      if (err) reject(err);
+      else resolve({ topic: t, qos: q, retain: r, bytes: buf.length });
+    });
+  });
+}
