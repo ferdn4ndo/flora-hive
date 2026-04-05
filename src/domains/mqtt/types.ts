@@ -5,11 +5,8 @@ export type DeviceRegistryEntry = {
   presenceKind: "ttl" | "explicit";
   explicitConnected?: boolean;
   meta?: object;
-  identity?: {
-    environmentId: string;
-    deviceId: string;
-    path: string;
-  };
+  /** Catalog `devices.id` — same UUID used as the first MQTT segment under the prefix. */
+  identity?: { deviceRowId: string };
 };
 
 export type PublicMqttDevice = {
@@ -17,10 +14,6 @@ export type PublicMqttDevice = {
   connected: boolean;
   lastSeenAt: string;
   lastTopic: string;
-  identity?: {
-    environmentId: string;
-    deviceId: string;
-    path: string;
-  };
+  identity?: { deviceRowId: string };
   telemetry?: object;
 };

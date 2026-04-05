@@ -32,21 +32,15 @@ function extractWildcardSegments(pattern, topic) {
     return segments.length > 0 ? segments : null;
 }
 function compositeDeviceId(segments) {
-    if (segments.length === 2) {
-        return `environments/${segments[0]}/devices/${segments[1]}`;
-    }
+    if (segments.length === 1)
+        return segments[0];
     return segments.join("/");
 }
 function hiveIdentityFromSegments(segments) {
-    if (segments.length !== 2)
+    if (segments.length !== 1)
         return undefined;
-    const environmentId = segments[0];
-    const deviceId = segments[1];
-    return {
-        environmentId,
-        deviceId,
-        path: `environments/${environmentId}/devices/${deviceId}`,
-    };
+    const deviceRowId = segments[0];
+    return { deviceRowId };
 }
 function looksLikeFloraHeartbeatJson(j) {
     return (!!j &&
@@ -142,13 +136,11 @@ export function listLiveDevices(options) {
     let filtered = options.includeOffline
         ? rows
         : rows.filter((d) => d.connected);
-    if (options.allowedEnvironmentIds !== null) {
-        const allow = new Set(options.allowedEnvironmentIds);
+    if (options.allowedDeviceRowIds !== null) {
+        const allow = new Set(options.allowedDeviceRowIds);
         filtered = filtered.filter((d) => {
-            if (d.identity?.environmentId)
-                return allow.has(d.identity.environmentId);
-            const m = d.id.match(/^environments\/([^/]+)\/devices\//);
-            return m?.[1] ? allow.has(m[1]) : false;
+            const rowId = d.identity?.deviceRowId ?? d.id;
+            return allow.has(rowId);
         });
     }
     filtered.sort((a, b) => a.id.localeCompare(b.id));
@@ -293,5 +285,5 @@ export async function publishMqtt(input) {
         });
     });
 }
-export { parseEnvironmentIdFromTopic, normalizeTopic } from "./topic.js";
+export { parseDeviceRowIdFromTopic, normalizeTopic } from "./topic.js";
 //# sourceMappingURL=services.js.map

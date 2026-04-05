@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeTopic, parseEnvironmentIdFromTopic } from "./topic.js";
+import { normalizeTopic, parseDeviceRowIdFromTopic } from "./topic.js";
 
 describe("normalizeTopic", () => {
   it("prefixes relative topics", () => {
@@ -13,11 +13,11 @@ describe("normalizeTopic", () => {
   });
 });
 
-describe("parseEnvironmentIdFromTopic", () => {
-  it("reads environment id from environments/<id>/devices/… after prefix", () => {
+describe("parseDeviceRowIdFromTopic", () => {
+  it("reads device row id as first segment after prefix", () => {
     expect(
-      parseEnvironmentIdFromTopic(
-        "flora/environments/550e8400-e29b-41d4-a716-446655440000/devices/node-1/heartbeat",
+      parseDeviceRowIdFromTopic(
+        "flora/550e8400-e29b-41d4-a716-446655440000/heartbeat",
         "flora"
       )
     ).toBe("550e8400-e29b-41d4-a716-446655440000");

@@ -4,16 +4,18 @@ import * as authController from "./domains/auth/controller.js";
 import { attachAuthOptional } from "./domains/auth/middleware.js";
 import * as deviceController from "./domains/device/controller.js";
 import * as envController from "./domains/environment/controller.js";
-import { getMqttState, listLiveDevices, normalizeTopic, parseEnvironmentIdFromTopic, publishMqtt, } from "./domains/mqtt/services.js";
-import { ForbiddenError, getEnvironmentById, listEnvironmentsForUser, requireEnvAccess, } from "./domains/environment/services.js";
+import { getMqttState, listLiveDevices, normalizeTopic, parseDeviceRowIdFromTopic, publishMqtt, } from "./domains/mqtt/services.js";
+import { ForbiddenError, listEnvironmentsForUser, requireEnvAccess, } from "./domains/environment/services.js";
+import { getDeviceRowById, listDeviceRowIdsForEnvironments, } from "./domains/device/services.js";
 import { requireAuth } from "./domains/auth/middleware.js";
-async function allowedEnvironmentIdsForRequest(req) {
+async function allowedDeviceRowIdsForRequest(req) {
     if (!req.auth)
         return [];
     if (req.auth.kind === "api_key")
         return null;
     const rows = await listEnvironmentsForUser(req.auth.hiveUserId);
-    return rows.map((r) => r.env.id);
+    const envIds = rows.map((r) => r.env.id);
+    return listDeviceRowIdsForEnvironments(envIds);
 }
 async function assertMqttPublishAllowed(req, topic) {
     if (req.auth?.kind === "api_key")
@@ -22,15 +24,15 @@ async function assertMqttPublishAllowed(req, topic) {
         throw new ForbiddenError("Authentication required");
     }
     const normalized = normalizeTopic(topic, config.topicPrefix);
-    const environmentId = parseEnvironmentIdFromTopic(normalized, config.topicPrefix);
-    if (!environmentId) {
-        throw new ForbiddenError("Cannot derive environment from topic");
+    const deviceRowId = parseDeviceRowIdFromTopic(normalized, config.topicPrefix);
+    if (!deviceRowId) {
+        throw new ForbiddenError("Cannot derive device id from topic");
     }
-    const env = await getEnvironmentById(environmentId);
-    if (!env) {
-        throw new ForbiddenError("Unknown environment for this topic");
+    const device = await getDeviceRowById(deviceRowId);
+    if (!device) {
+        throw new ForbiddenError("Unknown device for this topic");
     }
-    await requireEnvAccess(env.id, req.auth.hiveUserId, true);
+    await requireEnvAccess(device.environmentId, req.auth.hiveUserId, true);
 }
 export function createApp() {
     const app = express();
@@ -67,9 +69,9 @@ export function createApp() {
         try {
             const raw = req.query.include_offline;
             const includeOffline = raw === "1" || raw === "true" || raw === "yes";
-            const allow = await allowedEnvironmentIdsForRequest(req);
+            const allow = await allowedDeviceRowIdsForRequest(req);
             res.json({
-                devices: listLiveDevices({ includeOffline, allowedEnvironmentIds: allow }),
+                devices: listLiveDevices({ includeOffline, allowedDeviceRowIds: allow }),
             });
         }
         catch (e) {

@@ -35,11 +35,10 @@ const topicPrefix =
     ? "flora"
     : String(process.env.FLORA_TOPIC_PREFIX).replace(/\/$/, "");
 
+/** Firmware uses only the device row UUID: `{prefix}/<device_uuid>/heartbeat`. */
 function defaultDevicesSubscribePattern(prefix: string): string {
   const p = prefix.trim();
-  return p
-    ? `${p}/environments/+/devices/+/heartbeat`
-    : "environments/+/devices/+/heartbeat";
+  return p ? `${p}/+/heartbeat` : "+/heartbeat";
 }
 
 const devicesSubscribePattern =

@@ -1,3 +1,4 @@
+/** `id` is the catalog row UUID — firmware publishes `{prefix}/<id>/…` on MQTT. */
 export function devicePublic(d) {
     return {
         id: d.id,
