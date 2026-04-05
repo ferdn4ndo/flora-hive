@@ -1,0 +1,1 @@
+{"version":3,"file":"rbac.js","sourceRoot":"","sources":["../../../src/domains/environment/rbac.ts"],"names":[],"mappings":"AAEA,MAAM,UAAU,WAAW,CAAC,IAA4B;IACtD,OAAO,IAAI,KAAK,QAAQ,IAAI,IAAI,KAAK,QAAQ,CAAC;AAChD,CAAC;AAED,MAAM,UAAU,YAAY,CAAC,IAA4B;IACvD,OAAO,IAAI,KAAK,QAAQ,CAAC;AAC3B,CAAC"}

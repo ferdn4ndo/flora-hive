@@ -1,197 +1,149 @@
 # Flora Hive
 
-**Flora Hive** is a small Node.js service for the Flora system: it maintains an MQTT client to your broker and exposes an **authenticated HTTP API** for publishing messages and listing devices that report over MQTT.
+**Flora Hive** is a Node.js **TypeScript** service for the Flora stack: it connects to **MQTT**, stores **environments** and **nested device** metadata in **PostgreSQL** (via [Drizzle ORM](https://orm.drizzle.team/)), and exposes an HTTP API. Authentication follows the same **uServer-Auth** HTTP pattern as [userver-filemgr](https://github.com/ferdn4ndo/userver-filemgr) (Bearer JWT from the Flask auth service, validated with `GET /auth/me`).
 
 ## Requirements
 
-- **Node.js 20** (see `.nvmrc`). [NVM](https://github.com/nvm-sh/nvm) is recommended:
-
-  ```bash
-  nvm install
-  nvm use
-  ```
-
-- A reachable **MQTT broker** (plain TLS, WebSocket, etc. supported via URL scheme).
-
-- **Docker** and **Docker Compose** (optional), if you run Hive in a container.
+- **Node.js 20** (`.nvmrc`) — use [NVM](https://github.com/nvm-sh/nvm): `nvm install && nvm use`
+- **PostgreSQL** — same env convention as [userver-filemgr](https://github.com/ferdn4ndo/userver-filemgr): `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASS`. A typical stack DB is [userver-datamgr](https://github.com/ferdn4ndo/userver-datamgr) (`userver-postgres` when sharing the Compose network).
+- **MQTT broker**
+- **uServer-Auth** (optional but required for user login/register/JWT flows): base URL + system name + system token
+- **Docker** (optional)
 
 ## Quick start
 
-1. Copy the environment template and edit values (especially `HIVE_API_KEYS` and `MQTT_URL`):
-
-   ```bash
-   cp .env.example .env
-   ```
-
-2. Install dependencies and start:
-
-   ```bash
-   npm install
-   npm start
-   ```
-
-   For file-watching during development:
-
-   ```bash
-   npm run dev
-   ```
-
-The HTTP server listens on **`PORT`** (default **8080**).
-
-## Environment variables
-
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `HIVE_API_KEYS` | Yes | — | Comma-separated API keys. Any one key grants access. |
-| `MQTT_URL` | Yes | — | Broker URL (`mqtt://`, `mqtts://`, `ws://`, `wss://`). |
-| `MQTT_USERNAME` | No | — | Broker username. |
-| `MQTT_PASSWORD` | No | — | Broker password. |
-| `MQTT_CLIENT_ID` | No | `flora-hive` | MQTT client id. |
-| `MQTT_DEFAULT_QOS` | No | `1` | Default QoS for `POST /v1/mqtt/publish` when omitted. |
-| `PORT` | No | `8080` | HTTP listen port. |
-| `FLORA_TOPIC_PREFIX` | No | `flora` | Prefix applied to **publish** topics that are not already under this prefix. If unset in the environment, defaults to `flora`. Set to an **empty** value in `.env` (`FLORA_TOPIC_PREFIX=`) to disable prefixing. |
-| `FLORA_DEVICES_SUBSCRIBE_TOPIC` | No | `flora/+/+/+/heartbeat` | MQTT subscription pattern Hive uses to observe devices. Must use `+` segments; see [Device listing](#device-listing). |
-| `FLORA_DEVICE_HEARTBEAT_TTL_SEC` | No | `180` | For heartbeat-style messages, seconds after the last message before a device is treated as disconnected (10–86400). |
-
-Generate a strong key, for example:
-
 ```bash
-openssl rand -hex 32
+cp .env.example .env
+# Set MQTT_URL, USERVER_AUTH_* , and optionally HIVE_API_KEYS
+npm install
+npm run dev
 ```
 
-## Authentication
-
-All routes under `/v1/*` require an API key:
-
-- Header **`X-API-Key: <key>`**, or  
-- Header **`Authorization: Bearer <key>`**
-
-`GET /healthz` is **not** authenticated (suitable for load balancers and health checks).
-
-## HTTP API
-
-### `GET /healthz`
-
-Public. Returns service liveness.
-
-**Response:** `{ "status": "ok", "service": "flora-hive" }`
-
----
-
-### `GET /v1/whoami`
-
-**Response:** `{ "ok": true, "role": "hive" }`
-
----
-
-### `GET /v1/mqtt/connection`
-
-MQTT session summary for the Hive process (broker URL has secrets redacted).
-
----
-
-### `GET /v1/devices`
-
-Lists known devices derived from subscribed MQTT traffic.
-
-| Query | Meaning |
-|-------|---------|
-| `include_offline=1` (or `true` / `yes`) | Include devices that are stale or explicitly offline. |
-| *(omitted)* | Only devices currently considered **connected**. |
-
-**Response:** `{ "devices": [ … ] }`
-
-Each element typically includes:
-
-- `id` — Composite id from wildcard segments (e.g. `envId/deviceType/deviceId`).
-- `identity` — Present for Flora-style **heartbeat** topics with three wildcards: `{ "envId", "deviceType", "deviceId" }`.
-- `connected` — Whether the device is considered online (see [Device listing](#device-listing)).
-- `lastSeenAt` — ISO timestamp of the last matching message.
-- `lastTopic` — Full MQTT topic of that message.
-- `telemetry` — Last parsed JSON payload when applicable (e.g. Flora heartbeat JSON).
-
----
-
-### `POST /v1/mqtt/publish`
-
-Publishes a message to MQTT (Hive must be connected to the broker).
-
-**Body (JSON):**
-
-| Field | Required | Description |
-|-------|----------|-------------|
-| `topic` | Yes | Topic string. If it does not already start with `FLORA_TOPIC_PREFIX` (when prefix is non-empty), the prefix is prepended. |
-| `payload` | No | String, object (serialized as JSON), or omitted for an empty payload. |
-| `qos` | No | `0`, `1`, or `2` (defaults to `MQTT_DEFAULT_QOS`). |
-| `retain` | No | Boolean retain flag. |
-
-**Success:** `202` with `{ "ok": true, "topic", "qos", "retain", "bytes" }`.
-
-**Errors:** `400` (validation), `503` (MQTT not connected), `500` (publish failure).
-
-## Device listing
-
-Hive **does not** query the broker for a client list. It infers devices from messages on **`FLORA_DEVICES_SUBSCRIBE_TOPIC`**.
-
-### Default: Flora ESP firmware
-
-The default pattern matches firmware that publishes heartbeats on:
-
-`flora/{FLORA_ENV_ID}/{FLORA_DEVICE_TYPE}/{FLORA_DEVICE_ID}/heartbeat`
-
-with JSON such as `ts`, `dht_status`, `temperature`, `humidity`, `registered_at`, etc.
-
-For those messages, **`connected`** is **time-based**: `true` if a message arrived within **`FLORA_DEVICE_HEARTBEAT_TTL_SEC`** seconds. Tune this to be greater than your worst-case heartbeat interval.
-
-### Optional: explicit presence topics
-
-If you point `FLORA_DEVICES_SUBSCRIBE_TOPIC` at a dedicated status topic (e.g. `flora/+/+/+/status`), payloads can use:
-
-- Plain text: `online`, `offline`, `true`, `false`, etc., or  
-- JSON: `connected`, `online`, or `state` (`online` / `offline`, …).
-
-Then **`connected`** follows that explicit signal instead of the heartbeat TTL.
-
-### Custom patterns
-
-The pattern may contain **multiple** `+` wildcards. The listed `id` is those segments joined with `/`. The pattern must align segment-for-segment with real topics (only `+` as a wildcard).
-
-## MQTT → commands (firmware)
-
-Devices subscribe to commands on:
-
-`flora/{FLORA_ENV_ID}/{FLORA_DEVICE_TYPE}/{FLORA_DEVICE_ID}/commands`
-
-Use **`POST /v1/mqtt/publish`** with a full topic or a suffix that your `FLORA_TOPIC_PREFIX` rules expand correctly (for example, with default prefix, `lab/grow/unit1/commands` becomes `flora/lab/grow/unit1/commands`).
-
-## Docker
-
-Build and run with Compose (loads `.env`):
+Production:
 
 ```bash
-docker compose build
-docker compose up -d
+npm run build
+npm start
 ```
 
-Or use npm scripts:
+## Configuration
 
-```bash
-npm run docker:build
-npm run docker:up
-```
+See [`.env.example`](.env.example). Important variables:
 
-The image uses **Node 20** (`Dockerfile`), aligned with **`.nvmrc`**. Do not bake secrets into the image; pass them via `.env` or your orchestrator.
+| Variable | Purpose |
+|----------|---------|
+| `MQTT_URL` | Broker URL (required). With userver-eventmgr: **`mqtt://userver-mosquitto:1883`** (native MQTT on 1883). Use **`ws://userver-mosquitto:9001`** only for WebSockets — not `ws://…:1883` (that causes immediate disconnect / “socket hang up”). |
+| `MQTT_USERNAME` / `MQTT_PASSWORD` | Often required; eventmgr’s Mosquitto uses `allow_anonymous false` and a password file. |
+| `POSTGRES_HOST` / `POSTGRES_PORT` / `POSTGRES_DB` / `POSTGRES_USER` | App database (required); matches userver-filemgr / Django `DATABASES`. |
+| `POSTGRES_PASS` or `POSTGRES_PASSWORD` | Password for `POSTGRES_USER` (either name works; empty only if the role has no password). |
+| `USERVER_AUTH_HOST` | Base URL of uServer-Auth (no trailing slash). |
+| `USERVER_AUTH_SYSTEM_NAME` / `USERVER_AUTH_SYSTEM_TOKEN` | Forwarded on login/register (server-side); not exposed to clients on those routes. |
+| `USERVER_AUTH_SYSTEM_CREATION_TOKEN` | Optional; matches uServer-Auth `SYSTEM_CREATION_TOKEN`. Required for `db:prepare` to create the system when login fails. |
+| `USERVER_AUTH_USER` / `USERVER_AUTH_PASSWORD` | Optional; admin user for `db:prepare` to probe login and register if missing. |
+| `SKIP_USERVER_AUTH_SETUP` | Set to `1` to skip auth bootstrap in `db:prepare` / container entrypoint. |
+| `SKIP_CONTAINER_PREPARE` | Set to `1` in Docker to skip entrypoint DB + auth bootstrap (app only). |
+| `HIVE_API_KEYS` | Optional comma-separated API keys (`X-API-Key`) for automation — **full** access to MQTT + all environments. |
+| `FLORA_TOPIC_PREFIX`, `FLORA_DEVICES_SUBSCRIBE_TOPIC`, `FLORA_DEVICE_HEARTBEAT_TTL_SEC` | MQTT topic behaviour (default subscribe pattern: `{prefix}/environments/+/devices/+/heartbeat`). |
 
-## Project layout
+## Authentication model
+
+1. **Users (JWT)** — `Authorization: Bearer <access_token>` from uServer-Auth. Hive calls `GET {USERVER_AUTH_HOST}/auth/me` to validate and sync a local `hive_users` row.
+2. **Service (API key)** — `X-API-Key: <key>` when `HIVE_API_KEYS` is set. Intended for trusted backends; bypasses per-environment membership for MQTT listing/publish rules that use “all envs”.
+
+### Auth routes (proxied / local)
+
+| Method | Path | Notes |
+|--------|------|--------|
+| POST | `/v1/auth/login` | Body: `{ "username", "password" }` — Hive adds `system_name` / `system_token` from env. |
+| POST | `/v1/auth/register` | Body: `{ "username", "password", "is_admin"? }`. |
+| POST | `/v1/auth/refresh` | Body: `{ "refresh_token" }`. |
+| POST | `/v1/auth/logout` | Bearer access token. |
+| GET | `/v1/auth/me` | Bearer — returns uServer `me` + Hive user profile. |
+| PATCH | `/v1/auth/password` or `/v1/auth/reset-password` | Bearer — `{ "current_password", "new_password" }` → uServer `/auth/me/password`. |
+
+## Domain model
+
+- **Environment** — `name`, optional `description`. MQTT path prefix for the environment is `environments/<environment_id>` (same as the environment row `id`).
+- **Membership** — each user is **viewer** (read) or **editor** (read/write) on an environment.
+- **Device (catalog)** — logical devices under an environment: `deviceType`, `deviceId`, optional `parentDeviceId` for nesting, optional `displayName`. MQTT device paths use `environments/<environment_id>/devices/<device_id>`. Distinct from **live MQTT devices** below.
+
+## HTTP API overview
+
+### Health
+
+- `GET /healthz` — public.
+
+### MQTT
+
+- `GET /v1/mqtt/connection` — broker connection status.
+- `GET /v1/mqtt/devices` — live devices from MQTT heartbeats, **filtered to environments the JWT user can access**. API key sees all. Query `include_offline=1` to include stale rows.
+- `POST /v1/mqtt/publish` — **editor** on the target environment (or API key). Normalized topic must include `environments/<environment_id>/…` for a known environment id.
+
+### Environments CRUD
+
+- `GET /v1/environments` — JWT: only member environments; API key: all.
+- `POST /v1/environments` — JWT only (creator becomes **editor**). Body `{ "name", "description"? }`.
+- `GET|PATCH|DELETE /v1/environments/:environmentId` — membership required; PATCH/DELETE need **editor**.
+
+### Members CRUD
+
+- `GET /v1/environments/:environmentId/members`
+- `POST /v1/environments/:environmentId/members` — body `{ "authUserUuid", "role": "viewer"|"editor" }` (target user must have called `GET /v1/auth/me` once so Hive has a row).
+- `PATCH /v1/environments/:environmentId/members/:userId` — body `{ "role" }`.
+- `DELETE /v1/environments/:environmentId/members/:userId`
+
+### Device catalog CRUD
+
+- `GET /v1/environments/:environmentId/devices` — query `parent` omitted = all; `parent=null` roots only; `parent=<uuid>` children (internal device row id).
+- `POST /v1/environments/:environmentId/devices` — editor only.
+- `GET|PATCH|DELETE /v1/environments/:environmentId/devices/:deviceId` — JWT membership; API key may GET any device (`deviceId` is the catalog logical id, not the internal row UUID).
+
+## Project layout (domain-based)
 
 ```
 src/
-  index.js      # Process entry: MQTT connect, HTTP server, shutdown
-  app.js        # Express routes
-  auth.js       # API key middleware
-  config.js     # Environment loading and validation
-  mqttClient.js # MQTT connection, device registry, publish helpers
+  app.ts                 # Express wiring
+  index.ts               # Entry, MQTT + HTTP + shutdown
+  config.ts
+  db/                    # PostgreSQL bootstrap SQL + Drizzle schema
+  http/params.ts
+  domains/
+    auth/                # userver HTTP client, middleware, controller, types
+    user/                # services, views
+    environment/         # rbac, services, views, controller
+    device/              # services, views, controller
+    mqtt/                # topic helpers, MQTT client service, types
+  types/express.d.ts
 ```
+
+## Database provisioning
+
+Create a database and role on your PostgreSQL instance (same patterns as userver-filemgr: PostgreSQL 15+ may need `GRANT USAGE, CREATE ON SCHEMA public` for the app user). On first start, Hive runs **idempotent** DDL (`src/db/bootstrapPg.ts`) to create tables and indexes.
+
+For **drizzle-kit** introspection or migrations: `npm run db:generate` with `POSTGRES_*` set (see `drizzle.config.ts`).
+
+## Docker
+
+```bash
+docker compose up --build
+```
+
+Point `.env` at your Postgres host (e.g. `POSTGRES_HOST=userver-postgres` on the userver-datamgr Docker network). The image **entrypoint** runs `dist/containerPrepare.js` first (Postgres DB/role when `POSTGRES_ROOT_*` is set, Hive DDL, optional uServer-Auth bootstrap), then **`node dist/index.js`**. Set `SKIP_CONTAINER_PREPARE=1` to skip that step.
+
+## Scripts
+
+| Script | Purpose |
+|--------|---------|
+| `npm run dev` | `tsx watch src/index.ts` |
+| `npm run build` | `tsc` → `dist/` |
+| `npm start` | `node dist/index.js` |
+| `npm test` | Vitest unit tests |
+| `npm run db:generate` | Drizzle Kit (optional migrations) |
+| `npm run db:prepare` | Postgres bootstrap (optional), Hive DDL, then uServer-Auth system + admin (optional; see `.env.example`) |
+
+## uServer-Auth reference
+
+Same API surface as in userver-filemgr’s `UServerAuthenticationService`: `POST /auth/login`, `POST /auth/register`, `GET /auth/me` with `Authorization: Bearer`, etc. See [userver-auth](https://github.com/ferdn4ndo/userver-auth) for the canonical contract.
 
 ## License
 
