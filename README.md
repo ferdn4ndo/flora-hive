@@ -43,7 +43,7 @@ See [`.env.example`](.env.example). Important variables:
 | `SKIP_USERVER_AUTH_SETUP` | Set to `1` to skip auth bootstrap in `db:prepare` / container entrypoint. |
 | `SKIP_CONTAINER_PREPARE` | Set to `1` in Docker to skip entrypoint DB + auth bootstrap (app only). |
 | `HIVE_API_KEYS` | Optional comma-separated API keys (`X-API-Key`) for automation — **full** access to MQTT + all environments. |
-| `FLORA_TOPIC_PREFIX`, `FLORA_DEVICES_SUBSCRIBE_TOPIC`, `FLORA_DEVICE_HEARTBEAT_TTL_SEC` | MQTT topic behaviour (default subscribe pattern: `{prefix}/environments/+/devices/+/heartbeat`). |
+| `FLORA_TOPIC_PREFIX`, `FLORA_DEVICES_SUBSCRIBE_TOPIC`, `FLORA_DEVICE_HEARTBEAT_TTL_SEC` | MQTT topic behaviour (default subscribe pattern: `{prefix}/+/heartbeat` — first segment is catalog `devices.id`). |
 
 ## Authentication model
 
@@ -63,9 +63,9 @@ See [`.env.example`](.env.example). Important variables:
 
 ## Domain model
 
-- **Environment** — `name`, optional `description`. MQTT path prefix for the environment is `environments/<environment_id>` (same as the environment row `id`).
+- **Environment** — `name`, optional `description`. REST resource path `environments/<id>` (same as the row `id`).
 - **Membership** — each user is **viewer** (read) or **editor** (read/write) on an environment.
-- **Device (catalog)** — logical devices under an environment: `deviceType`, `deviceId`, optional `parentDeviceId` for nesting, optional `displayName`. MQTT device paths use `environments/<environment_id>/devices/<device_id>`. Distinct from **live MQTT devices** below.
+- **Device (catalog)** — logical devices under an environment: `deviceType`, `deviceId`, optional `parentDeviceId` for nesting, optional `displayName`. **HTTP** uses nested routes under `/v1/environments/.../devices/...`. **MQTT** uses only the catalog row UUID (`devices.id`) as the first topic segment after the flora prefix, e.g. `{prefix}/<devices.id>/heartbeat`, so firmware does not need the environment id. Distinct from **live MQTT devices** below.
 
 ## HTTP API overview
 
@@ -76,8 +76,8 @@ See [`.env.example`](.env.example). Important variables:
 ### MQTT
 
 - `GET /v1/mqtt/connection` — broker connection status.
-- `GET /v1/mqtt/devices` — live devices from MQTT heartbeats, **filtered to environments the JWT user can access**. API key sees all. Query `include_offline=1` to include stale rows.
-- `POST /v1/mqtt/publish` — **editor** on the target environment (or API key). Normalized topic must include `environments/<environment_id>/…` for a known environment id.
+- `GET /v1/mqtt/devices` — live devices from MQTT heartbeats, **filtered to catalog devices the JWT user can reach via their environments**. API key sees all. Query `include_offline=1` to include stale rows.
+- `POST /v1/mqtt/publish` — **editor** on the environment that owns the device (or API key). Normalized topic’s first segment after the prefix must be a known catalog **`devices.id`**.
 
 ### Environments CRUD
 

@@ -7,7 +7,7 @@ export function environmentPublic(
   return {
     id: env.id,
     name: env.name,
-    mqttEnvPath: `environments/${env.id}`,
+    path: `environments/${env.id}`,
     description: env.description,
     createdAt: env.createdAt,
     updatedAt: env.updatedAt,

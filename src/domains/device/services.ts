@@ -1,4 +1,4 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { getDatabase } from "../../db/client.js";
 import { devices } from "../../db/schema.js";
@@ -44,6 +44,19 @@ export async function listDevicesInEnvironment(
 ) {
   await requireEnvAccess(environmentId, userId, false);
   return listDevicesByEnvironmentId(environmentId, parentDeviceId);
+}
+
+/** Catalog row ids for MQTT filtering (`devices.id` = first topic segment under prefix). */
+export async function listDeviceRowIdsForEnvironments(
+  environmentIds: string[]
+): Promise<string[]> {
+  if (environmentIds.length === 0) return [];
+  const db = getDatabase();
+  const rows = await db
+    .select({ id: devices.id })
+    .from(devices)
+    .where(inArray(devices.environmentId, environmentIds));
+  return rows.map((r) => r.id);
 }
 
 export async function createDevice(input: {

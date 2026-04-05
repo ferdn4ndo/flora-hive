@@ -18,6 +18,8 @@ export declare function listDevicesInEnvironment(environmentId: string, userId: 
     deviceId: string;
     displayName: string | null;
 }[]>;
+/** Catalog row ids for MQTT filtering (`devices.id` = first topic segment under prefix). */
+export declare function listDeviceRowIdsForEnvironments(environmentIds: string[]): Promise<string[]>;
 export declare function createDevice(input: {
     environmentId: string;
     userId: string;

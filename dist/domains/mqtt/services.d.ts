@@ -4,8 +4,8 @@ import type { PublicMqttDevice } from "./types.js";
 export declare function initMqttService(config: AppConfig): void;
 export declare function listLiveDevices(options: {
     includeOffline?: boolean;
-    /** When set, only devices in these environment ids (API key: pass null for all). */
-    allowedEnvironmentIds: string[] | null;
+    /** Catalog `devices.id` values the caller may see (API key: null = all). */
+    allowedDeviceRowIds: string[] | null;
 }): PublicMqttDevice[];
 export declare function getMqttState(): {
     connected: boolean;
@@ -27,5 +27,5 @@ export declare function publishMqtt(input: {
     retain: boolean;
     bytes: number;
 }>;
-export { parseEnvironmentIdFromTopic, normalizeTopic } from "./topic.js";
+export { parseDeviceRowIdFromTopic, normalizeTopic } from "./topic.js";
 //# sourceMappingURL=services.d.ts.map

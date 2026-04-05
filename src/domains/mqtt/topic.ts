@@ -11,17 +11,17 @@ export function normalizeTopic(topic: string, topicPrefix: string): string {
 }
 
 /**
- * Environment id for MQTT ACL: path segment after `environments/` (with optional
- * `floraPrefix/` stripped), e.g. `flora/environments/<uuid>/devices/...` → `<uuid>`.
+ * Device row id for MQTT ACL: first path segment after optional `topicPrefix/`
+ * (the catalog `devices.id` UUID). E.g. `flora/<uuid>/heartbeat` → `<uuid>`.
  */
-export function parseEnvironmentIdFromTopic(
+export function parseDeviceRowIdFromTopic(
   topic: string,
-  floraPrefix: string
+  topicPrefix: string
 ): string | null {
   let t = topic.replace(/^\/+/, "");
-  if (floraPrefix && t.startsWith(`${floraPrefix}/`)) {
-    t = t.slice(floraPrefix.length + 1);
+  if (topicPrefix && t.startsWith(`${topicPrefix}/`)) {
+    t = t.slice(topicPrefix.length + 1);
   }
-  const m = t.match(/^environments\/([^/]+)/);
-  return m?.[1] ?? null;
+  const seg = t.split("/")[0];
+  return seg || null;
 }

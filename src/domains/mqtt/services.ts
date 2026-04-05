@@ -45,21 +45,14 @@ function extractWildcardSegments(
 }
 
 function compositeDeviceId(segments: string[]) {
-  if (segments.length === 2) {
-    return `environments/${segments[0]}/devices/${segments[1]}`;
-  }
+  if (segments.length === 1) return segments[0]!;
   return segments.join("/");
 }
 
 function hiveIdentityFromSegments(segments: string[]) {
-  if (segments.length !== 2) return undefined;
-  const environmentId = segments[0]!;
-  const deviceId = segments[1]!;
-  return {
-    environmentId,
-    deviceId,
-    path: `environments/${environmentId}/devices/${deviceId}`,
-  };
+  if (segments.length !== 1) return undefined;
+  const deviceRowId = segments[0]!;
+  return { deviceRowId };
 }
 
 function looksLikeFloraHeartbeatJson(j: unknown): j is Record<string, unknown> {
@@ -161,8 +154,8 @@ function subscribeDeviceTopics() {
 
 export function listLiveDevices(options: {
   includeOffline?: boolean;
-  /** When set, only devices in these environment ids (API key: pass null for all). */
-  allowedEnvironmentIds: string[] | null;
+  /** Catalog `devices.id` values the caller may see (API key: null = all). */
+  allowedDeviceRowIds: string[] | null;
 }): PublicMqttDevice[] {
   const config = getCfg();
   const ttl = config.deviceHeartbeatTtlSec;
@@ -171,12 +164,11 @@ export function listLiveDevices(options: {
     ? rows
     : rows.filter((d) => d.connected);
 
-  if (options.allowedEnvironmentIds !== null) {
-    const allow = new Set(options.allowedEnvironmentIds);
+  if (options.allowedDeviceRowIds !== null) {
+    const allow = new Set(options.allowedDeviceRowIds);
     filtered = filtered.filter((d) => {
-      if (d.identity?.environmentId) return allow.has(d.identity.environmentId);
-      const m = d.id.match(/^environments\/([^/]+)\/devices\//);
-      return m?.[1] ? allow.has(m[1]) : false;
+      const rowId = d.identity?.deviceRowId ?? d.id;
+      return allow.has(rowId);
     });
   }
 
@@ -338,4 +330,4 @@ export async function publishMqtt(input: {
   });
 }
 
-export { parseEnvironmentIdFromTopic, normalizeTopic } from "./topic.js";
+export { parseDeviceRowIdFromTopic, normalizeTopic } from "./topic.js";
