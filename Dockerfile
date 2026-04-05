@@ -1,5 +1,5 @@
 # Node major must match `.nvmrc` (use NVM locally: `nvm install` / `nvm use`).
-FROM node:20-alpine AS build
+FROM node:25-alpine AS build
 
 WORKDIR /app
 
@@ -10,7 +10,7 @@ COPY tsconfig.json ./
 COPY src ./src
 RUN npm run build
 
-FROM node:20-alpine
+FROM node:25-alpine
 
 WORKDIR /app
 
