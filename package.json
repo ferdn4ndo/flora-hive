@@ -22,7 +22,7 @@
     "node": "^20.0.0"
   },
   "dependencies": {
-    "dotenv": "^16.4.7",
+    "dotenv": "^17.4.0",
     "drizzle-orm": "^0.38.3",
     "express": "^4.21.2",
     "mqtt": "^5.10.4",
