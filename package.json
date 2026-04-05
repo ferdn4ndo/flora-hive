@@ -1,21 +1,42 @@
 {
   "name": "flora-hive",
-  "version": "0.1.0",
-  "description": "Flora Hive — MQTT bridge and authenticated HTTP API",
+  "version": "0.2.0",
+  "description": "Flora Hive — MQTT bridge, environments, and uServer-Auth integration",
   "type": "module",
-  "main": "src/index.js",
+  "main": "dist/index.js",
   "scripts": {
-    "start": "node src/index.js",
-    "dev": "node --watch src/index.js",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:smoke": "tsx scripts/db-smoke.ts",
+    "db:prepare": "tsx scripts/prepare-db.ts",
     "docker:build": "docker compose build",
-    "docker:up": "docker compose up -d"
+    "docker:up": "docker compose up -d",
+    "healthcheck": "node scripts/healthcheck.js"
   },
   "engines": {
     "node": "^20.0.0"
   },
   "dependencies": {
     "dotenv": "^16.4.7",
+    "drizzle-orm": "^0.38.3",
     "express": "^4.21.2",
-    "mqtt": "^5.10.4"
+    "mqtt": "^5.10.4",
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^22.10.5",
+    "@types/pg": "^8.11.10",
+    "@types/supertest": "^6.0.2",
+    "drizzle-kit": "^0.30.1",
+    "supertest": "^7.0.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
   }
 }

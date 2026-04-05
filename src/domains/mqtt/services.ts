@@ -1,32 +1,39 @@
 import mqtt from "mqtt";
-import { EventEmitter } from "node:events";
-import { config } from "./config.js";
+import EventEmitter from "node:events";
+import type { AppConfig } from "../../config.js";
+import type {
+  DeviceRegistryEntry,
+  PublicMqttDevice,
+} from "./types.js";
+import { normalizeTopic as normalizePublishTopic } from "./topic.js";
 
 const events = new EventEmitter();
 
-/**
- * @typedef {object} DeviceRegistryEntry
- * @property {string} id
- * @property {string} lastSeenAt
- * @property {string} lastTopic
- * @property {'ttl'|'explicit'} presenceKind
- * @property {boolean} [explicitConnected]
- * @property {object} [meta]
- * @property {{ envId: string, deviceType: string, deviceId: string }} [identity]
- */
+const deviceRegistry = new Map<string, DeviceRegistryEntry>();
 
-/** @type {Map<string, DeviceRegistryEntry>} */
-const deviceRegistry = new Map();
-
-let client = null;
+let client: mqtt.MqttClient | null = null;
 let connected = false;
-let lastError = null;
+let lastError: Error | null = null;
 
-function extractWildcardSegments(pattern, topic) {
+let cfgRef: AppConfig | null = null;
+
+export function initMqttService(config: AppConfig) {
+  cfgRef = config;
+}
+
+function getCfg(): AppConfig {
+  if (!cfgRef) throw new Error("MQTT service not initialized");
+  return cfgRef;
+}
+
+function extractWildcardSegments(
+  pattern: string,
+  topic: string
+): string[] | null {
   const pa = pattern.split("/");
   const ta = topic.split("/");
   if (pa.length !== ta.length) return null;
-  const segments = [];
+  const segments: string[] = [];
   for (let i = 0; i < pa.length; i++) {
     if (pa[i] === "+") {
       segments.push(ta[i]);
@@ -37,56 +44,64 @@ function extractWildcardSegments(pattern, topic) {
   return segments.length > 0 ? segments : null;
 }
 
-function compositeDeviceId(segments) {
+function compositeDeviceId(segments: string[]) {
+  if (segments.length === 2) {
+    return `environments/${segments[0]}/devices/${segments[1]}`;
+  }
   return segments.join("/");
 }
 
-function floraIdentityFromTopic(topic, segments) {
-  if (segments.length !== 3) return undefined;
-  if (!topic.endsWith("/heartbeat")) return undefined;
+function hiveIdentityFromSegments(segments: string[]) {
+  if (segments.length !== 2) return undefined;
+  const environmentId = segments[0]!;
+  const deviceId = segments[1]!;
   return {
-    envId: segments[0],
-    deviceType: segments[1],
-    deviceId: segments[2],
+    environmentId,
+    deviceId,
+    path: `environments/${environmentId}/devices/${deviceId}`,
   };
 }
 
-function looksLikeFloraHeartbeatJson(j) {
+function looksLikeFloraHeartbeatJson(j: unknown): j is Record<string, unknown> {
   return (
-    j &&
+    !!j &&
     typeof j === "object" &&
-    (typeof j.ts === "number" ||
-      typeof j.ts === "string" ||
-      j.dht_status !== undefined ||
-      j.registered_at !== undefined)
+    (typeof (j as { ts?: unknown }).ts === "number" ||
+      typeof (j as { ts?: unknown }).ts === "string" ||
+      (j as { dht_status?: unknown }).dht_status !== undefined ||
+      (j as { registered_at?: unknown }).registered_at !== undefined)
   );
 }
 
-/**
- * @returns {{ kind: 'heartbeat', meta?: object } | { kind: 'status', connected: boolean, meta?: object }}
- */
-function parseDevicePayload(payloadBuf) {
+function parseDevicePayload(payloadBuf: Buffer): {
+  kind: "heartbeat" | "status";
+  connected?: boolean;
+  meta?: object;
+} {
   const s = payloadBuf.toString("utf8").trim();
   if (!s) return { kind: "heartbeat", meta: undefined };
   try {
-    const j = JSON.parse(s);
+    const j: unknown = JSON.parse(s);
     if (looksLikeFloraHeartbeatJson(j)) {
       return { kind: "heartbeat", meta: j };
     }
-    if (typeof j.connected === "boolean") {
-      return { kind: "status", connected: j.connected, meta: j };
+    if (typeof j === "object" && j !== null) {
+      const o = j as Record<string, unknown>;
+      if (typeof o.connected === "boolean") {
+        return { kind: "status", connected: o.connected, meta: o };
+      }
+      if (typeof o.online === "boolean") {
+        return { kind: "status", connected: o.online, meta: o };
+      }
+      const st = String(o.state || "").toLowerCase();
+      if (st === "offline" || st === "disconnected") {
+        return { kind: "status", connected: false, meta: o };
+      }
+      if (st === "online" || st === "connected") {
+        return { kind: "status", connected: true, meta: o };
+      }
+      return { kind: "heartbeat", meta: o };
     }
-    if (typeof j.online === "boolean") {
-      return { kind: "status", connected: j.online, meta: j };
-    }
-    const st = String(j.state || "").toLowerCase();
-    if (st === "offline" || st === "disconnected") {
-      return { kind: "status", connected: false, meta: j };
-    }
-    if (st === "online" || st === "connected") {
-      return { kind: "status", connected: true, meta: j };
-    }
-    return { kind: "heartbeat", meta: j };
   } catch {
     /* plain text */
   }
@@ -111,23 +126,23 @@ function parseDevicePayload(payloadBuf) {
   return { kind: "heartbeat", meta: { raw: s } };
 }
 
-function millisSinceIso(iso) {
+function millisSinceIso(iso: string) {
   const t = new Date(iso).getTime();
   if (Number.isNaN(t)) return Infinity;
   return Date.now() - t;
 }
 
-function entryIsConnected(entry) {
+function entryIsConnected(entry: DeviceRegistryEntry, ttlSec: number) {
   if (entry.presenceKind === "explicit") {
     return entry.explicitConnected === true;
   }
-  return millisSinceIso(entry.lastSeenAt) <= config.deviceHeartbeatTtlSec * 1000;
+  return millisSinceIso(entry.lastSeenAt) <= ttlSec * 1000;
 }
 
-function toPublicDevice(entry) {
-  const row = {
+function toPublicDevice(entry: DeviceRegistryEntry, ttlSec: number): PublicMqttDevice {
+  const row: PublicMqttDevice = {
     id: entry.id,
-    connected: entryIsConnected(entry),
+    connected: entryIsConnected(entry, ttlSec),
     lastSeenAt: entry.lastSeenAt,
     lastTopic: entry.lastTopic,
   };
@@ -138,22 +153,39 @@ function toPublicDevice(entry) {
 
 function subscribeDeviceTopics() {
   if (!client || !connected) return;
-  const pattern = config.devicesSubscribePattern;
+  const pattern = getCfg().devicesSubscribePattern;
   client.subscribe(pattern, { qos: 1 }, (err) => {
     if (err) events.emit("subscribe_error", err);
   });
 }
 
-export function listDevices({ includeOffline = false } = {}) {
-  const rows = [...deviceRegistry.values()].map(toPublicDevice);
-  const filtered = includeOffline
+export function listLiveDevices(options: {
+  includeOffline?: boolean;
+  /** When set, only devices in these environment ids (API key: pass null for all). */
+  allowedEnvironmentIds: string[] | null;
+}): PublicMqttDevice[] {
+  const config = getCfg();
+  const ttl = config.deviceHeartbeatTtlSec;
+  const rows = [...deviceRegistry.values()].map((e) => toPublicDevice(e, ttl));
+  let filtered = options.includeOffline
     ? rows
-    : rows.filter((d) => d.connected === true);
+    : rows.filter((d) => d.connected);
+
+  if (options.allowedEnvironmentIds !== null) {
+    const allow = new Set(options.allowedEnvironmentIds);
+    filtered = filtered.filter((d) => {
+      if (d.identity?.environmentId) return allow.has(d.identity.environmentId);
+      const m = d.id.match(/^environments\/([^/]+)\/devices\//);
+      return m?.[1] ? allow.has(m[1]) : false;
+    });
+  }
+
   filtered.sort((a, b) => a.id.localeCompare(b.id));
   return filtered;
 }
 
 export function getMqttState() {
+  const config = getCfg();
   return {
     connected,
     clientId: config.mqtt.clientId,
@@ -162,7 +194,7 @@ export function getMqttState() {
   };
 }
 
-function redactUrl(url) {
+function redactUrl(url: string) {
   try {
     const u = new URL(url);
     if (u.password) u.password = "***";
@@ -173,14 +205,15 @@ function redactUrl(url) {
   }
 }
 
-export function onMqtt(event, fn) {
+export function onMqtt(event: string, fn: (...args: unknown[]) => void) {
   events.on(event, fn);
 }
 
 export function connectMqtt() {
+  const config = getCfg();
   if (client) return client;
 
-  const opts = {
+  const opts: mqtt.IClientOptions = {
     clientId: config.mqtt.clientId,
     reconnectPeriod: 5_000,
     connectTimeout: 30_000,
@@ -205,7 +238,7 @@ export function connectMqtt() {
     if (!segments) return;
     const id = compositeDeviceId(segments);
     const parsed = parseDevicePayload(payload);
-    const identity = floraIdentityFromTopic(topic, segments);
+    const identity = hiveIdentityFromSegments(segments);
     const now = new Date().toISOString();
 
     if (parsed.kind === "heartbeat") {
@@ -255,7 +288,7 @@ export function connectMqtt() {
   return client;
 }
 
-export function disconnectMqtt() {
+export function disconnectMqtt(): Promise<void> {
   return new Promise((resolve) => {
     if (!client) {
       resolve();
@@ -269,43 +302,40 @@ export function disconnectMqtt() {
   });
 }
 
-function normalizeTopic(topic) {
-  let t = String(topic).trim();
-  if (t.startsWith("/")) t = t.slice(1);
-  if (!t) throw new Error("topic is empty");
-  const p = config.topicPrefix;
-  if (p && !t.startsWith(`${p}/`) && t !== p) {
-    t = `${p}/${t}`;
-  }
-  return t;
-}
-
-function encodePayload(payload) {
+function encodePayload(payload: unknown): Buffer {
   if (payload === null || payload === undefined) return Buffer.alloc(0);
   if (Buffer.isBuffer(payload)) return payload;
   if (typeof payload === "string") return Buffer.from(payload, "utf8");
   return Buffer.from(JSON.stringify(payload), "utf8");
 }
 
-export function publishMqtt({ topic, payload, qos, retain }) {
+export async function publishMqtt(input: {
+  topic: string;
+  payload?: unknown;
+  qos?: number | null;
+  retain?: boolean;
+}): Promise<{ topic: string; qos: number; retain: boolean; bytes: number }> {
+  const config = getCfg();
   if (!client) throw new Error("MQTT client not initialized");
   if (!connected) throw new Error("MQTT not connected");
 
-  const t = normalizeTopic(topic);
+  const t = normalizePublishTopic(input.topic, config.topicPrefix);
   const q =
-    qos !== undefined && qos !== null
-      ? Number(qos)
+    input.qos !== undefined && input.qos !== null
+      ? Number(input.qos)
       : config.mqtt.defaultQos;
   if (q < 0 || q > 2 || Number.isNaN(q)) {
     throw new Error("qos must be 0, 1, or 2");
   }
-  const r = Boolean(retain);
-  const buf = encodePayload(payload);
+  const r = Boolean(input.retain);
+  const buf = encodePayload(input.payload);
 
   return new Promise((resolve, reject) => {
-    client.publish(t, buf, { qos: q, retain: r }, (err) => {
+    client!.publish(t, buf, { qos: q as 0 | 1 | 2, retain: r }, (err) => {
       if (err) reject(err);
       else resolve({ topic: t, qos: q, retain: r, bytes: buf.length });
     });
   });
 }
+
+export { parseEnvironmentIdFromTopic, normalizeTopic } from "./topic.js";

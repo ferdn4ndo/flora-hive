@@ -1,3 +1,6 @@
+# Run against PostgreSQL from userver-datamgr: attach this service to the same network
+# (e.g. `nginx-proxy` in userver-datamgr) and set POSTGRES_HOST=userver-postgres (container_name).
+# POSTGRES_PASS or POSTGRES_PASSWORD in .env must match that role or you will see 28P01.
 services:
   flora-hive:
     build: .
@@ -6,4 +9,15 @@ services:
       - "${PORT:-8080}:8080"
     env_file:
       - .env
+    healthcheck:
+      test: ["CMD", "node", "scripts/healthcheck.js"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 45s
     restart: unless-stopped
+
+networks:
+  default:
+    name: nginx-proxy
+    external: true

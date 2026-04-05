@@ -1,0 +1,55 @@
+name: Vuln. Scan
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - "**.md"
+    tags-ignore:
+      - "**"
+  pull_request:
+    paths-ignore:
+      - "**.md"
+
+jobs:
+  scan-image:
+    name: Grype scan (Docker image)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      pull-requests: write
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v6
+
+      - name: Build Docker image
+        run: docker build --tag flora-hive:local .
+
+      - name: Scan image
+        uses: anchore/scan-action@v7
+        id: scan
+        with:
+          image: flora-hive:local
+          fail-build: false
+          severity-cutoff: low
+
+      - name: Upload SARIF
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: ${{ steps.scan.outputs.sarif }}
+
+      - name: Summarize Grype results
+        id: grype_summary
+        run: |
+          set -euo pipefail
+          sarif="${{ steps.scan.outputs.sarif }}"
+          n=$(jq '(.runs[0].results // []) | length' "$sarif")
+          echo "count=$n" >> "$GITHUB_OUTPUT"
+          echo "Grype reported $n finding(s)."
+          if [ "$n" -eq 0 ]; then
+            echo "has_findings=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "has_findings=true" >> "$GITHUB_OUTPUT"

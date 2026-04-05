@@ -1,0 +1,27 @@
+name: Codebase Quality
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - '**.md'
+    tags-ignore:
+      - '**'
+  pull_request:
+    paths-ignore:
+      - '**.md'
+
+jobs: # Docs: <https://git.io/JvxXE>
+  check-codebase-quality:
+    name: Check codebase quality with ShellCheck
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v6
+
+      - name: Run ShellCheck
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y shellcheck
+          find . -name '*.sh' -not -path './.git/*' -print0 | xargs -0 -r shellcheck
