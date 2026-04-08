@@ -23,7 +23,7 @@
   },
   "dependencies": {
     "dotenv": "^17.4.0",
-    "drizzle-orm": "^0.38.3",
+    "drizzle-orm": "^0.45.2",
     "express": "^4.21.2",
     "mqtt": "^5.10.4",
     "pg": "^8.13.1"
