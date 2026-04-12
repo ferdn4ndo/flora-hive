@@ -1,10 +1,9 @@
-# Development: builds the Go image from ./Dockerfile on each `docker compose build` / `up --build`.
-# Run against PostgreSQL from userver-datamgr: attach to the same network (e.g. nginx-proxy) and set
-# POSTGRES_HOST=userver-postgres. POSTGRES_PASS or POSTGRES_PASSWORD must match that role (28P01 if not).
+# Production: never builds from source — uses the image published by GitHub (Docker Hub: ferdn4ndo/flora-hive).
+# Override FLORA_HIVE_IMAGE to pin a release tag (same tags the release workflow pushes).
+# Example: FLORA_HIVE_IMAGE=ferdn4ndo/flora-hive:0.2.0 docker compose -f docker-compose.prod.yml up -d
 services:
   flora-hive:
-    build: .
-    image: flora-hive:local
+    image: ${FLORA_HIVE_IMAGE:-ferdn4ndo/flora-hive:latest}
     container_name: flora-hive
     ports:
       - "${PORT:-8080}:8080"
