@@ -102,6 +102,12 @@ internal/
 
 Schema is applied with **golang-migrate** (`migrate:up`). SQL lives in `migrations/` (`hive_users`, `environments`, `environment_members`, `devices`). Migrations use `IF NOT EXISTS` where appropriate when applying to an existing database.
 
+### Optional: create DB and role (Docker / superuser)
+
+When the app runs **inside the Docker image**, the entrypoint runs [`scripts/docker-bootstrap-postgres.sh`](scripts/docker-bootstrap-postgres.sh) **before** `migrate:up` (unless `SKIP_CONTAINER_PREPARE=1`). If **`POSTGRES_ROOT_USER`** and **`POSTGRES_ROOT_PASS`** are set, it waits for PostgreSQL, then creates **`POSTGRES_DB`** and **`POSTGRES_USER`** with password **`POSTGRES_PASS`** or **`POSTGRES_PASSWORD`** when they are missing—same idea as **userver-filemgr** `setup.sh`. **`POSTGRES_ADMIN_DATABASE`** defaults to **`postgres`**; **`POSTGRES_SSLMODE`** is passed to `psql` via **`PGSSLMODE`**.
+
+Use this when Hive points at a server that only has the default `postgres` superuser (for example first-time **docker compose** against **userver-postgres**): set root credentials to match that instance, and set **`POSTGRES_PASS`** to the password you want for **`POSTGRES_USER`**.
+
 ## Docker
 
 The [`Dockerfile`](Dockerfile) uses a **multi-stage** build: the **`build`** stage sits on top of **`test`**, so **`go test`** runs before the binary is compiled. **`make build`** and **`make image`** both execute that path (use **`make test-docker`** to stop after tests). Override the toolchain with a [build-arg](https://docs.docker.com/build/guide/build-args/): `docker build --build-arg GO_VERSION=1.24.5 ...`.
@@ -126,7 +132,7 @@ docker compose -f docker-compose.prod.yml up -d
 # FLORA_HIVE_IMAGE=ferdn4ndo/flora-hive:0.2.0 docker compose -f docker-compose.prod.yml up -d
 ```
 
-The runtime image entrypoint runs **`./flora-hive migrate:up`** unless `SKIP_CONTAINER_PREPARE=1`, then starts **`app:serve`**. Ensure `.env` has `POSTGRES_*`, `MQTT_URL`, and optional auth/MQTT tuning.
+The runtime image entrypoint runs **`docker-bootstrap-postgres.sh`** (when `POSTGRES_ROOT_*` is set), then **`./flora-hive migrate:up`**, then **`app:serve`**—unless **`SKIP_CONTAINER_PREPARE=1`** (then only the command you pass runs). Ensure `.env` has `POSTGRES_*`, `MQTT_URL`, and optional auth/MQTT tuning.
 
 ## Development
 
