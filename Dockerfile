@@ -21,7 +21,7 @@ FROM test AS build
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/flora-hive ./cmd
 
 # --- Runtime ---
-FROM alpine:3.21
+FROM alpine:3.23
 
 RUN apk add --no-cache ca-certificates wget
 
