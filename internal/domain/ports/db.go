@@ -44,6 +44,8 @@ type DeviceRepository interface {
 	Insert(d *models.Device) error
 	GetByID(id string) (*models.Device, error)
 	GetByEnvAndDeviceID(environmentID, logicalDeviceID string) (*models.Device, error)
+	// ListByLogicalDeviceIDGlobally returns all device rows with the given devices.device_id (may be >1 across environments).
+	ListByLogicalDeviceIDGlobally(logicalDeviceID string) ([]models.Device, error)
 	Update(id string, updatedAt string, deviceType, logicalDeviceID *string, updateDisplayName bool, displayName *string, updateParent bool, parentDeviceID *string) error
 	Delete(id string) error
 }

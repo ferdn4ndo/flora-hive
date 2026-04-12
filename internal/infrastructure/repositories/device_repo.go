@@ -88,6 +88,19 @@ FROM devices WHERE environment_id = $1 AND device_id = $2
 	return &d, nil
 }
 
+func (r *DeviceRepo) ListByLogicalDeviceIDGlobally(logicalDeviceID string) ([]models.Device, error) {
+	var rows []models.Device
+	err := r.db.Select(&rows, `
+SELECT id, environment_id, parent_device_id, device_type, device_id, display_name, created_at, updated_at
+FROM devices WHERE device_id = $1
+ORDER BY environment_id, id
+`, logicalDeviceID)
+	if err != nil {
+		return nil, models.CreateErrorWithContext(err)
+	}
+	return rows, nil
+}
+
 func (r *DeviceRepo) Update(id string, updatedAt string, deviceType, logicalDeviceID *string, updateDisplayName bool, displayName *string, updateParent bool, parentDeviceID *string) error {
 	parts := make([]string, 0, 5)
 	args := make([]interface{}, 0, 8)

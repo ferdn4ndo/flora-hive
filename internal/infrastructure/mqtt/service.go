@@ -12,6 +12,8 @@ import (
 	"go.uber.org/fx"
 
 	"flora-hive/internal/domain/mqtttopic"
+	"flora-hive/internal/domain/ports"
+	"flora-hive/internal/infrastructure/repositories"
 	"flora-hive/lib"
 )
 
@@ -30,7 +32,7 @@ type RegistryEntry struct {
 	LastTopic         string
 	PresenceKind      PresenceKind
 	ExplicitConnected *bool
-	DeviceRowID       string // when single-segment identity
+	DeviceRowID       string // catalog devices.id (resolved from devices.device_id in topic)
 	Meta              interface{}
 }
 
@@ -61,6 +63,7 @@ type State struct {
 type Service struct {
 	env    lib.Env
 	logger lib.Logger
+	dev    ports.DeviceRepository
 
 	mu          sync.RWMutex
 	client      mqtt.Client
@@ -71,8 +74,9 @@ type Service struct {
 }
 
 // NewService constructs the service (client connects on fx OnStart).
-func NewService(env lib.Env, logger lib.Logger, lc fx.Lifecycle) *Service {
-	s := &Service{env: env, logger: logger, registry: make(map[string]*RegistryEntry)}
+func NewService(env lib.Env, logger lib.Logger, db lib.Database, lc fx.Lifecycle) *Service {
+	rp := repositories.NewDeviceRepo(&db)
+	s := &Service{env: env, logger: logger, dev: rp, registry: make(map[string]*RegistryEntry)}
 	lc.Append(fx.Hook{
 		OnStart: func(ctx context.Context) error {
 			s.Connect()
@@ -163,23 +167,32 @@ func (s *Service) messageHandler() mqtt.MessageHandler {
 		if segments == nil {
 			return
 		}
-		id := mqtttopic.CompositeDeviceID(segments)
+		logicalID := mqtttopic.CompositeDeviceID(segments)
 		parsed := parseDevicePayload(msg.Payload())
 		now := time.Now().UTC().Format(time.RFC3339Nano)
-		var deviceRow string
+		var catalogRow string
 		if dr, ok := mqtttopic.HiveIdentityFromSegments(segments); ok {
-			deviceRow = dr
+			rows, err := s.dev.ListByLogicalDeviceIDGlobally(dr)
+			if err != nil {
+				s.logger.Error("mqtt_device_lookup_error: ", err)
+			} else if len(rows) == 0 {
+				// unknown logical id — still keep a registry entry keyed by topic segment for ops
+			} else if len(rows) > 1 {
+				s.logger.Error("mqtt_device_lookup_ambiguous: device_id matches multiple rows")
+			} else {
+				catalogRow = rows[0].ID
+			}
 		}
 
 		s.mu.Lock()
 		defer s.mu.Unlock()
 		entry := &RegistryEntry{
-			ID:         id,
+			ID:         logicalID,
 			LastSeenAt: now,
 			LastTopic:  topic,
 		}
-		if deviceRow != "" {
-			entry.DeviceRowID = deviceRow
+		if catalogRow != "" {
+			entry.DeviceRowID = catalogRow
 		}
 		if parsed.kind == "heartbeat" {
 			entry.PresenceKind = PresenceTTL
@@ -193,7 +206,7 @@ func (s *Service) messageHandler() mqtt.MessageHandler {
 				entry.Meta = parsed.meta
 			}
 		}
-		s.registry[id] = entry
+		s.registry[logicalID] = entry
 	}
 }
 
@@ -301,10 +314,10 @@ func (s *Service) ListLiveDevices(includeOffline bool, allowedDeviceRowIDs []str
 			continue
 		}
 		if allowedDeviceRowIDs != nil {
-			rowID := e.DeviceRowID
-			if rowID == "" {
-				rowID = e.ID
+			if e.DeviceRowID == "" {
+				continue
 			}
+			rowID := e.DeviceRowID
 			allowed := false
 			for _, a := range allowedDeviceRowIDs {
 				if a == rowID {

@@ -414,13 +414,13 @@ func (h HiveRoutes) assertMqttPublishAllowed(p *authctx.Principal, topic string)
 	if err != nil {
 		return &models.ForbiddenError{Message: err.Error()}
 	}
-	deviceRowID := mqtttopic.ParseDeviceRowIDFromTopic(norm, h.env.FloraTopicPrefix)
-	if deviceRowID == "" {
+	segment := mqtttopic.ParseDeviceRowIDFromTopic(norm, h.env.FloraTopicPrefix)
+	if segment == "" {
 		return &models.ForbiddenError{Message: "Cannot derive device id from topic"}
 	}
-	dev, err := h.ds.GetRowByID(deviceRowID)
+	dev, err := h.ds.ResolveDeviceFromMQTTSegment(segment)
 	if err != nil {
-		return err
+		return &models.ForbiddenError{Message: err.Error()}
 	}
 	if dev == nil {
 		return &models.ForbiddenError{Message: "Unknown device for this topic"}
