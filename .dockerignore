@@ -1,6 +1,10 @@
-node_modules
-dist
 .git
+.cursor
+bin/
+out/
+coverage.out
+coverage.txt
+*.out
 .env
 .env.*
 !.env.example

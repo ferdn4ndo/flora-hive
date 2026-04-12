@@ -1,0 +1,62 @@
+version: "2"
+run:
+  concurrency: 4
+  issues-exit-code: 1
+  tests: true
+output:
+  formats:
+    text:
+      path: stdout
+linters:
+  default: none
+  enable:
+    - bodyclose
+    - errcheck
+    - godot
+    - gosec
+    - govet
+    - ineffassign
+    - misspell
+    - nilerr
+    - revive
+    - staticcheck
+    - unused
+  settings:
+    gosec:
+      excludes:
+        - G104
+    revive:
+      rules:
+        - name: exported
+          severity: warning
+          disabled: false
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - linters:
+          - gosec
+        path: _test\.go
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+formatters:
+  enable:
+    - gofumpt
+  settings:
+    gofumpt:
+      module-path: flora-hive
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
