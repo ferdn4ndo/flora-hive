@@ -109,7 +109,21 @@ The [`Dockerfile`](Dockerfile) uses a **multi-stage** build: the **`build`** sta
 ```bash
 make test-docker    # only the test stage (faster when you are iterating on tests)
 make image          # tests + compile + runtime image flora-hive:local (alias: make docker-build)
+```
+
+**Compose — development** ([`docker-compose.yml`](docker-compose.yml)): builds from [`Dockerfile`](Dockerfile) and tags **`flora-hive:local`**.
+
+```bash
 docker compose up --build
+```
+
+**Compose — production** ([`docker-compose.prod.yml`](docker-compose.prod.yml)): **no `build`**. Defaults to **Docker Hub** [`ferdn4ndo/flora-hive:latest`](https://hub.docker.com/r/ferdn4ndo/flora-hive) (same repository the [release container workflow](.github/workflows/create_release_container.yaml) pushes on each GitHub Release). Pin a version with **`FLORA_HIVE_IMAGE`** (e.g. `ferdn4ndo/flora-hive:0.2.0`) in the shell or `.env`.
+
+```bash
+docker compose -f docker-compose.prod.yml pull   # optional
+docker compose -f docker-compose.prod.yml up -d
+# Pin a release tag (workflow pushes ferdn4ndo/flora-hive:<version> + :latest):
+# FLORA_HIVE_IMAGE=ferdn4ndo/flora-hive:0.2.0 docker compose -f docker-compose.prod.yml up -d
 ```
 
 The runtime image entrypoint runs **`./flora-hive migrate:up`** unless `SKIP_CONTAINER_PREPARE=1`, then starts **`app:serve`**. Ensure `.env` has `POSTGRES_*`, `MQTT_URL`, and optional auth/MQTT tuning.
