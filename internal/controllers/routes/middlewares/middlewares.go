@@ -2,10 +2,9 @@ package middlewares
 
 import "go.uber.org/fx"
 
-// Module provides global Gin middleware for /v1.
+// Module provides Gin middleware for /v1 (CORS is global on the engine in lib.NewRequestHandler).
 var Module = fx.Options(
 	fx.Provide(NewSentryMiddleware),
-	fx.Provide(NewCorsMiddleware),
 	fx.Provide(NewErrorHandlerMiddleware),
 	fx.Provide(NewMiddlewares),
 )
@@ -21,10 +20,9 @@ type Middlewares []IMiddleware
 // NewMiddlewares builds the default stack.
 func NewMiddlewares(
 	sentryMiddleware SentryMiddleware,
-	corsMiddleware CorsMiddleware,
 	errorHandlerMiddleware ErrorHandlerMiddleware,
 ) Middlewares {
-	return Middlewares{sentryMiddleware, corsMiddleware, errorHandlerMiddleware}
+	return Middlewares{sentryMiddleware, errorHandlerMiddleware}
 }
 
 // Setup registers all middleware.

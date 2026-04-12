@@ -39,6 +39,10 @@ type Env struct {
 	UserverAuthSystemToken string `mapstructure:"USERVER_AUTH_SYSTEM_TOKEN"`
 
 	HiveAPIKeysRaw string `mapstructure:"HIVE_API_KEYS"`
+
+	// CorsAllowedOriginsRaw is a comma-separated list of allowed browser Origins (e.g. https://app.example.com).
+	// Empty means allow any origin (still sets ACAO per request when Origin is sent).
+	CorsAllowedOriginsRaw string `mapstructure:"CORS_ALLOWED_ORIGINS"`
 }
 
 // ParseHiveAPIKeysFromRaw splits HIVE_API_KEYS (comma-separated) into trimmed, non-empty keys.
@@ -99,6 +103,7 @@ func NewEnv() Env {
 		"FLORA_TOPIC_PREFIX", "FLORA_DEVICES_SUBSCRIBE_TOPIC", "FLORA_DEVICE_HEARTBEAT_TTL_SEC",
 		"USERVER_AUTH_HOST", "USERVER_AUTH_SYSTEM_NAME", "USERVER_AUTH_SYSTEM_TOKEN",
 		"HIVE_API_KEYS",
+		"CORS_ALLOWED_ORIGINS",
 	} {
 		if err := viper.BindEnv(k); err != nil {
 			log.Fatal("bind env: ", err)
