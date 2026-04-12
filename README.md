@@ -46,6 +46,7 @@ See [`.env.example`](.env.example). Important variables:
 | `SKIP_CONTAINER_PREPARE` | Set to `1` in Docker to skip the entrypoint migration step. |
 | `HIVE_API_KEYS` | Optional comma-separated API keys (`X-API-Key`) — broad access for automation (see auth model). |
 | `FLORA_TOPIC_PREFIX`, `FLORA_DEVICES_SUBSCRIBE_TOPIC`, `FLORA_DEVICE_HEARTBEAT_TTL_SEC` | MQTT topic behavior (default subscribe pattern: `{prefix}/+/heartbeat`; first `+` is catalog `devices.id`). |
+| `CORS_ALLOWED_ORIGINS` | Optional comma-separated allowed **`Origin`** values (e.g. `https://flora.sd40.com.br`). If unset, any origin is allowed. CORS runs on the **whole Gin engine** so `OPTIONS` preflights get headers even when no route matches yet. |
 
 ## Authentication model
 
