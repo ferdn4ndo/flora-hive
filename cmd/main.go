@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+
 	"github.com/joho/godotenv"
 	"github.com/spf13/cobra"
 
@@ -22,6 +24,7 @@ type App struct {
 func NewApp() App {
 	cmd := App{Command: rootCmd}
 	cmd.AddCommand(commands.Commands(CommonModules)...)
+	cmd.AddCommand(commands.BootstrapAuthCommand())
 	return cmd
 }
 
@@ -31,6 +34,6 @@ var RootApp = NewApp()
 func main() {
 	_ = godotenv.Load()
 	if err := RootApp.Execute(); err != nil {
-		return
+		os.Exit(1)
 	}
 }
