@@ -28,6 +28,7 @@ With a local Go toolchain you can skip Docker for the binary: `go run ./cmd app:
 | `go run ./cmd app:serve` | HTTP server (`PORT`, default `8080`) |
 | `go run ./cmd migrate:up` | Apply SQL migrations from `./migrations` |
 | `go run ./cmd migrate:down` | Roll back one migration step |
+| `go run ./cmd bootstrap:auth` | Optional uServer-Auth bootstrap (`POST /auth/system`, `POST /auth/register`); see [`.env.example`](.env.example) |
 
 ## Configuration
 
@@ -43,7 +44,10 @@ See [`.env.example`](.env.example). Important variables:
 | `ENVIRONMENT` | `local` (default) relaxes some production-only behavior (e.g. Gin dev mode, Sentry skipped). |
 | `USERVER_AUTH_HOST` | Base URL of uServer-Auth (no trailing slash). |
 | `USERVER_AUTH_SYSTEM_NAME` / `USERVER_AUTH_SYSTEM_TOKEN` | Forwarded on login/register server-side. |
-| `SKIP_CONTAINER_PREPARE` | Set to `1` in Docker to skip the entrypoint migration step. |
+| `SKIP_CONTAINER_PREPARE` | Set to `1` in Docker to skip the entrypoint prepare step (Postgres bootstrap, `migrate:up`, `bootstrap:auth`). |
+| `SKIP_USERVER_AUTH_SETUP` / `SKIP_AUTH_BOOTSTRAP` | Skip `bootstrap:auth` (Docker entrypoint and [`setup.sh`](setup.sh)). |
+| `USERVER_AUTH_SYSTEM_CREATION_TOKEN` / `SYSTEM_CREATION_TOKEN` | Bootstrap: `Authorization: Token …` on `POST /auth/system`. |
+| `HIVE_SKIP_PERSIST_BOOTSTRAP_ENV` / `FILEMGR_SKIP_PERSIST_BOOTSTRAP_ENV` | Set to `1` to avoid writing bootstrap tokens into `.env`. |
 | `HIVE_API_KEYS` | Optional comma-separated API keys (`X-API-Key`) — broad access for automation (see auth model). |
 | `FLORA_TOPIC_PREFIX`, `FLORA_DEVICES_SUBSCRIBE_TOPIC`, `FLORA_DEVICE_HEARTBEAT_TTL_SEC` | MQTT topic behavior (default subscribe pattern: `{prefix}/+/heartbeat`; first `+` is catalog `devices.id`). |
 | `CORS_ALLOWED_ORIGINS` | Optional comma-separated allowed **`Origin`** values (e.g. `https://flora.sd40.com.br`). If unset, any origin is allowed. CORS runs on the **whole Gin engine** so `OPTIONS` preflights get headers even when no route matches yet. |
@@ -133,7 +137,11 @@ docker compose -f docker-compose.prod.yml up -d
 # FLORA_HIVE_IMAGE=ferdn4ndo/flora-hive:0.2.0 docker compose -f docker-compose.prod.yml up -d
 ```
 
-The runtime image entrypoint runs **`docker-bootstrap-postgres.sh`** (when `POSTGRES_ROOT_*` is set), then **`./flora-hive migrate:up`**, then **`app:serve`**—unless **`SKIP_CONTAINER_PREPARE=1`** (then only the command you pass runs). Ensure `.env` has `POSTGRES_*`, `MQTT_URL`, and optional auth/MQTT tuning.
+The runtime image entrypoint runs **`docker-bootstrap-postgres.sh`** (when `POSTGRES_ROOT_*` is set), then **`./flora-hive migrate:up`**, then **`./flora-hive bootstrap:auth`** (non-fatal on failure, same idea as [userver-filemgr](https://github.com/ferdn4ndo/userver-filemgr) `setup.sh`), then **`app:serve`**—unless **`SKIP_CONTAINER_PREPARE=1`** (then only the command you pass runs). Ensure `.env` has `POSTGRES_*`, `MQTT_URL`, and optional auth/MQTT tuning.
+
+### Host setup script
+
+[`setup.sh`](setup.sh) loads `.env` if present, runs optional Postgres bootstrap, **`migrate:up`**, then **`bootstrap:auth`**. Override the binary with **`MIGRATE_BIN`** (default **`./bin/flora-hive`**; run **`make build`** first). Skip auth with **`SKIP_AUTH_BOOTSTRAP=1`** or **`SKIP_USERVER_AUTH_SETUP=1`**.
 
 ## Development
 
