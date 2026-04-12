@@ -25,7 +25,7 @@
     "dotenv": "^17.4.0",
     "drizzle-orm": "^0.38.3",
     "express": "^4.21.2",
-    "mqtt": "^5.10.4",
+    "mqtt": "^5.15.1",
     "pg": "^8.13.1"
   },
   "devDependencies": {
