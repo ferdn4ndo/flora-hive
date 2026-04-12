@@ -1,5 +1,5 @@
 # Toolchain version: bump GO_VERSION when you adopt a new Go release (keep in sync with go.mod minimum).
-ARG GO_VERSION=1.23.4
+ARG GO_VERSION=1.24.4
 
 # --- Shared toolchain (all compile/test steps use this image only) ---
 FROM golang:${GO_VERSION}-alpine AS gobase

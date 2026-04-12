@@ -4,8 +4,8 @@
 
 ## Requirements
 
-- **Docker** — required for **`make build`** and **`make test-docker`** (the compiler version is fixed by the `GO_VERSION` build-arg in the [`Dockerfile`](Dockerfile), default `1.23.4`).
-- **Go 1.23+** (optional) — only if you use **`make test`**, **`make test-race`**, **`make lint`**, or **`go run ./cmd`** on the host; align with `go.mod`.
+- **Docker** — required for **`make build`** and **`make test-docker`** (the compiler version is fixed by the `GO_VERSION` build-arg in the [`Dockerfile`](Dockerfile), default `1.24.4`).
+- **Go 1.24+** (optional) — only if you use **`make test`**, **`make test-race`**, **`make lint`**, or **`go run ./cmd`** on the host; align with `go.mod`.
 - **PostgreSQL** — same env convention as userver-filemgr: `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASS` (or `POSTGRES_PASSWORD`). A typical stack DB is [userver-datamgr](https://github.com/ferdn4ndo/userver-datamgr) (`userver-postgres` when sharing the Compose network).
 - **MQTT broker**
 - **uServer-Auth** (optional but required for user login/register/JWT flows): base URL + system name + system token
@@ -104,7 +104,7 @@ Schema is applied with **golang-migrate** (`migrate:up`). SQL lives in `migratio
 
 ## Docker
 
-The [`Dockerfile`](Dockerfile) uses a **multi-stage** build: the **`build`** stage sits on top of **`test`**, so **`go test`** runs before the binary is compiled. **`make build`** and **`make image`** both execute that path (use **`make test-docker`** to stop after tests). Override the toolchain with a [build-arg](https://docs.docker.com/build/guide/build-args/): `docker build --build-arg GO_VERSION=1.23.5 ...`.
+The [`Dockerfile`](Dockerfile) uses a **multi-stage** build: the **`build`** stage sits on top of **`test`**, so **`go test`** runs before the binary is compiled. **`make build`** and **`make image`** both execute that path (use **`make test-docker`** to stop after tests). Override the toolchain with a [build-arg](https://docs.docker.com/build/guide/build-args/): `docker build --build-arg GO_VERSION=1.24.5 ...`.
 
 ```bash
 make test-docker    # only the test stage (faster when you are iterating on tests)

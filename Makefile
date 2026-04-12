@@ -3,7 +3,7 @@
 BIN := bin/flora-hive
 BUILD_IMAGE ?= flora-hive:build
 # Pin here and in Dockerfile ARG GO_VERSION (single place to document; pass --build-arg to override).
-GO_VERSION ?= 1.23.4
+GO_VERSION ?= 1.24.4
 DOCKER_BUILD_ARGS := --build-arg GO_VERSION=$(GO_VERSION)
 
 # Produce bin/flora-hive using only the Go toolchain inside the image (see Dockerfile stages).
