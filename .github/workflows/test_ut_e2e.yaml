@@ -1,4 +1,4 @@
-name: Unit tests
+name: Go CI
 
 on:
   push:
@@ -14,8 +14,8 @@ on:
       - "**.md"
 
 jobs:
-  unit-tests:
-    name: Node 20 — build, test, Postgres smoke
+  go-ci:
+    name: Go — lint & tests
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -33,31 +33,76 @@ jobs:
           - 5432:5432
 
     env:
+      ENVIRONMENT: local
+      LOG_LEVEL: error
       POSTGRES_HOST: localhost
       POSTGRES_PORT: "5432"
       POSTGRES_USER: postgres
       POSTGRES_PASS: postgres
       POSTGRES_DB: flora_hive_ci
+      POSTGRES_SSLMODE: disable
       MQTT_URL: mqtt://127.0.0.1:1883
 
     steps:
       - name: Check out code
         uses: actions/checkout@v6
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
+      - name: Set up Go
+        uses: actions/setup-go@v6
         with:
-          node-version-file: ".nvmrc"
-          cache: npm
+          go-version-file: go.mod
+          cache: true
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Verify modules
+        run: go mod verify
 
-      - name: Typecheck and build
-        run: npm run build
+      - name: Run tests
+        run: go test -race -count=1 ./...
 
-      - name: Run unit tests
-        run: npm test
+  go-build-migrate:
+    name: Go — build & migrations
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: flora_hive_ci
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
 
-      - name: Postgres bootstrap smoke
-        run: npm run db:smoke
+    env:
+      ENVIRONMENT: local
+      LOG_LEVEL: error
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: postgres
+      POSTGRES_PASS: postgres
+      POSTGRES_DB: flora_hive_ci
+      POSTGRES_SSLMODE: disable
+      MQTT_URL: mqtt://127.0.0.1:1883
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Verify modules
+        run: go mod verify
+
+      - name: Build binary
+        run: go build -trimpath -o /tmp/flora-hive ./cmd
+
+      - name: Apply SQL migrations
+        run: /tmp/flora-hive migrate:up
