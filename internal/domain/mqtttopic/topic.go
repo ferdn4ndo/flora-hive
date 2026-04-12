@@ -4,7 +4,7 @@ import (
 	"strings"
 )
 
-// ParseDeviceRowIDFromTopic returns the first segment after optional prefix (catalog devices.id).
+// ParseDeviceRowIDFromTopic returns the first segment after optional prefix (logical devices.device_id).
 func ParseDeviceRowIDFromTopic(topic, topicPrefix string) string {
 	t := strings.TrimLeft(topic, "/")
 	p := strings.TrimSuffix(strings.TrimSpace(topicPrefix), "/")
@@ -43,8 +43,8 @@ func CompositeDeviceID(segments []string) string {
 	return strings.Join(segments, "/")
 }
 
-// HiveIdentityFromSegments returns deviceRowId when the pattern yields a single segment (row UUID).
-func HiveIdentityFromSegments(segments []string) (deviceRowID string, ok bool) {
+// HiveIdentityFromSegments returns the single wildcard segment (logical device id from the topic).
+func HiveIdentityFromSegments(segments []string) (logicalDeviceID string, ok bool) {
 	if len(segments) != 1 {
 		return "", false
 	}

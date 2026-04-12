@@ -89,6 +89,21 @@ func (s *DeviceService) GetRowByID(deviceRowID string) (*models.Device, error) {
 	return s.dev.GetByID(deviceRowID)
 }
 
+// ResolveDeviceFromMQTTSegment maps the first MQTT path segment (devices.device_id) to a unique catalog row.
+func (s *DeviceService) ResolveDeviceFromMQTTSegment(segment string) (*models.Device, error) {
+	rows, err := s.dev.ListByLogicalDeviceIDGlobally(segment)
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return nil, nil
+	}
+	if len(rows) > 1 {
+		return nil, errors.New("ambiguous mqtt topic segment: device_id is not unique across environments")
+	}
+	return &rows[0], nil
+}
+
 // GetByEnvAndDeviceID enforces read access.
 func (s *DeviceService) GetByEnvAndDeviceID(environmentID, logicalDeviceID, userID string) (*models.Device, error) {
 	d, err := s.dev.GetByEnvAndDeviceID(environmentID, logicalDeviceID)

@@ -49,7 +49,7 @@ See [`.env.example`](.env.example). Important variables:
 | `USERVER_AUTH_SYSTEM_CREATION_TOKEN` / `SYSTEM_CREATION_TOKEN` | Bootstrap: `Authorization: Token …` on `POST /auth/system`. |
 | `HIVE_SKIP_PERSIST_BOOTSTRAP_ENV` / `FILEMGR_SKIP_PERSIST_BOOTSTRAP_ENV` | Set to `1` to avoid writing bootstrap tokens into `.env`. |
 | `HIVE_API_KEYS` | Optional comma-separated API keys (`X-API-Key`) — broad access for automation (see auth model). |
-| `FLORA_TOPIC_PREFIX`, `FLORA_DEVICES_SUBSCRIBE_TOPIC`, `FLORA_DEVICE_HEARTBEAT_TTL_SEC` | MQTT topic behavior (default subscribe pattern: `{prefix}/+/heartbeat`; first `+` is catalog `devices.id`). |
+| `FLORA_TOPIC_PREFIX`, `FLORA_DEVICES_SUBSCRIBE_TOPIC`, `FLORA_DEVICE_HEARTBEAT_TTL_SEC` | MQTT topic behavior (default subscribe pattern: `{prefix}/+/heartbeat`; first `+` is logical `devices.device_id`). |
 | `CORS_ALLOWED_ORIGINS` | Optional comma-separated allowed **`Origin`** values (e.g. `https://flora.sd40.com.br`). If unset, any origin is allowed. CORS runs on the **whole Gin engine** so `OPTIONS` preflights get headers even when no route matches yet. |
 
 ## Authentication model
@@ -72,7 +72,7 @@ See [`.env.example`](.env.example). Important variables:
 
 - **Environment** — `name`, optional `description`. Path id is the row UUID.
 - **Membership** — **viewer** (read) or **editor** (read/write).
-- **Device (catalog)** — `deviceType`, `deviceId`, optional `parentDeviceId`, optional `displayName`. HTTP uses `/v1/environments/.../devices/...`. MQTT uses catalog row UUID `devices.id` as the first segment after the flora prefix (e.g. `{prefix}/<devices.id>/heartbeat`).
+- **Device (catalog)** — `deviceType`, `deviceId`, optional `parentDeviceId`, optional `displayName`. HTTP uses `/v1/environments/.../devices/...`. MQTT uses **`devices.device_id`** (the same string you register in flora-app) as the first segment after the topic prefix (e.g. `{prefix}/<device_id>/heartbeat`). The catalog row UUID **`devices.id`** is used internally for ACL and membership. For MQTT, that logical id must map to **at most one** device row globally (duplicate `device_id` across environments: publish is rejected and ingest does not attach a catalog row, so JWT-filtered live APIs omit the device).
 
 ## HTTP API overview
 
@@ -84,7 +84,9 @@ See [`.env.example`](.env.example). Important variables:
 
 - `GET /v1/mqtt/connection` — broker connection status (redacted URL).
 - `GET /v1/mqtt/devices` — live registry; JWT users see devices in their environments; API key sees all. `include_offline=1|true|yes`.
-- `POST /v1/mqtt/publish` — editor on the device’s environment (or API key). Topic normalized with `FLORA_TOPIC_PREFIX`; first segment after prefix must match a catalog `devices.id`.
+- `POST /v1/mqtt/publish` — editor on the device’s environment (or API key). Topic normalized with `FLORA_TOPIC_PREFIX`; first segment after prefix must match **`devices.device_id`** for exactly one catalog row.
+
+**Device firmware** (e.g. ESP32) should publish heartbeats to **`{FLORA_TOPIC_PREFIX}/<devices.device_id>/heartbeat`** and subscribe to **`{FLORA_TOPIC_PREFIX}/<devices.device_id>/commands`**. Hive resolves the catalog row and environment from that segment (no environment UUID in the MQTT path). Defaults: `FLORA_TOPIC_PREFIX=flora`, subscribe pattern `flora/+/heartbeat` (`FLORA_DEVICES_SUBSCRIBE_TOPIC`).
 
 ### Environments, members, devices
 
