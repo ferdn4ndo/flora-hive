@@ -23,13 +23,14 @@ RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/flora-h
 # --- Runtime ---
 FROM alpine:3.23
 
-RUN apk add --no-cache ca-certificates wget
+RUN apk add --no-cache ca-certificates wget postgresql-client
 
 WORKDIR /app
 COPY --from=build /out/flora-hive /app/flora-hive
 COPY migrations ./migrations
+COPY scripts/docker-bootstrap-postgres.sh /usr/local/bin/docker-bootstrap-postgres.sh
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh /app/flora-hive
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh /usr/local/bin/docker-bootstrap-postgres.sh /app/flora-hive
 
 ENV GIN_MODE=release
 EXPOSE 8080
