@@ -26,8 +26,10 @@ func NewErrorHandlerMiddleware(handler lib.RequestHandler, logger lib.Logger) Er
 func (m ErrorHandlerMiddleware) sendToSentry(c *gin.Context, e error) {
 	if hub := sentrygin.GetHubFromContext(c); hub != nil {
 		hub.WithScope(func(scope *sentry.Scope) {
-			if ctx, ok := c.Get("ErrorContext"); ok {
-				scope.SetExtra("Context", ctx)
+			if raw, ok := c.Get("ErrorContext"); ok {
+				if em, ok := raw.(map[string]interface{}); ok {
+					scope.SetContext("flora_hive_request", sentry.Context(em))
+				}
 			}
 			hub.CaptureException(e)
 		})
