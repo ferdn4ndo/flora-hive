@@ -13,7 +13,7 @@ require (
 	github.com/joho/godotenv v1.5.1
 	github.com/lib/pq v1.12.3
 	github.com/rs/cors/wrapper/gin v0.0.0-20231013084403-73f81b45a644
-	github.com/spf13/cobra v1.10.1
+	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
 	go.uber.org/fx v1.24.0
 	go.uber.org/zap v1.27.1
