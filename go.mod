@@ -1,10 +1,10 @@
 module flora-hive
 
-go 1.24.0
+go 1.25.0
 
 require (
 	github.com/eclipse/paho.mqtt.golang v1.5.1
-	github.com/getsentry/sentry-go v0.45.1
+	github.com/getsentry/sentry-go v0.48.0
 	github.com/getsentry/sentry-go/gin v0.45.1
 	github.com/gin-gonic/gin v1.11.0
 	github.com/golang-migrate/migrate/v4 v4.19.1
@@ -58,8 +58,8 @@ require (
 	golang.org/x/arch v0.20.0 // indirect
 	golang.org/x/crypto v0.48.0 // indirect
 	golang.org/x/net v0.50.0 // indirect
-	golang.org/x/sync v0.19.0 // indirect
-	golang.org/x/sys v0.41.0 // indirect
-	golang.org/x/text v0.34.0 // indirect
+	golang.org/x/sync v0.20.0 // indirect
+	golang.org/x/sys v0.45.0 // indirect
+	golang.org/x/text v0.37.0 // indirect
 	google.golang.org/protobuf v1.36.9 // indirect
 )
