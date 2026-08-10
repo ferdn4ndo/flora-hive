@@ -4,8 +4,8 @@ go 1.24.0
 
 require (
 	github.com/eclipse/paho.mqtt.golang v1.5.1
-	github.com/getsentry/sentry-go v0.45.0
-	github.com/getsentry/sentry-go/gin v0.45.0
+	github.com/getsentry/sentry-go v0.45.1
+	github.com/getsentry/sentry-go/gin v0.45.1
 	github.com/gin-gonic/gin v1.11.0
 	github.com/golang-migrate/migrate/v4 v4.19.0
 	github.com/google/uuid v1.6.0
