@@ -1,5 +1,5 @@
 # Toolchain version: bump GO_VERSION when you adopt a new Go release (keep in sync with go.mod minimum).
-ARG GO_VERSION=1.24.4
+ARG GO_VERSION=1.25.0
 
 # --- Shared toolchain (all compile/test steps use this image only) ---
 FROM golang:${GO_VERSION}-alpine AS gobase
@@ -21,7 +21,7 @@ FROM test AS build
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/flora-hive ./cmd
 
 # --- Runtime ---
-FROM alpine:3.23
+FROM alpine:3.24
 
 RUN apk add --no-cache ca-certificates wget postgresql-client
 
